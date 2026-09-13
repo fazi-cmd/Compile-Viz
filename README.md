@@ -1,4 +1,4 @@
-# ⚡ CompileViz — Mini Compiler with Visual GUI
+# ⚡ CompileViz — Mini Compiler with Visual GUI Semester 5 final Project (Compiler Construction Subject)
 
 > A full end-to-end compiler for **MiniLang** with an animated, browser-based interface showing every compilation phase in real time.
 
