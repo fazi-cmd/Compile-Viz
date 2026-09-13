@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CompileViz — Mini Compiler</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --surface3: #1e2d42;
+    --border: #1f3050;
+    --accent: #00d4ff;
+    --accent2: #7c3aed;
+    --accent3: #10b981;
+    --accent4: #f59e0b;
+    --red: #ef4444;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --text-mid: #94a3b8;
+    --keyword: #c084fc;
+    --string: #34d399;
+    --number: #fb923c;
+    --comment: #475569;
+    --type: #60a5fa;
+    --glow: 0 0 20px rgba(0, 212, 255, 0.15);
+    --glow2: 0 0 20px rgba(124, 58, 237, 0.2);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Space Grotesk', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 56px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+
+  .logo span { color: var(--accent); }
+
+  .header-center {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .phase-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+    opacity: 0.4;
+    transition: all 0.3s;
+  }
+  .phase-badge.active { opacity: 1; }
+  .phase-badge.lexer   { color: var(--accent4); border-color: var(--accent4); background: rgba(245,158,11,0.1); }
+  .phase-badge.parser  { color: var(--type);    border-color: var(--type);    background: rgba(96,165,250,0.1); }
+  .phase-badge.semantic{ color: var(--accent3); border-color: var(--accent3); background: rgba(16,185,129,0.1); }
+  .phase-badge.codegen { color: var(--accent2); border-color: var(--accent2); background: rgba(124,58,237,0.1); }
+
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+
+  .btn {
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: none;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px;
+    letter-spacing: 0.2px;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #0099cc);
+    color: #000;
+    box-shadow: 0 0 20px rgba(0,212,255,0.3);
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 0 30px rgba(0,212,255,0.5); }
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text-mid);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { color: var(--text); border-color: var(--accent); }
+
+  .btn-danger {
+    background: rgba(239,68,68,0.1);
+    color: var(--red);
+    border: 1px solid rgba(239,68,68,0.3);
+  }
+  .btn-danger:hover { background: rgba(239,68,68,0.2); }
+
+  /* Main Layout */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    flex: 1;
+    overflow: hidden;
+    gap: 0;
+  }
+
+  /* Left Panel - Editor */
+  .editor-panel {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .panel-title .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .editor-wrapper {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+  }
+
+  .line-numbers {
+    width: 48px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px 0;
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-dim);
+    overflow: hidden;
+    flex-shrink: 0;
+    user-select: none;
+  }
+
+  .line-num {
+    padding: 0 10px 0 0;
+    line-height: 22px;
+    transition: color 0.2s;
+  }
+  .line-num.active { color: var(--accent); }
+
+  #editor {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 22px;
+    padding: 16px;
+    resize: none;
+    tab-size: 4;
+    caret-color: var(--accent);
+    position: relative;
+    z-index: 2;
+  }
+
+  .editor-bg {
+    position: absolute;
+    inset: 0;
+    background: var(--bg);
+    z-index: 1;
+  }
+
+  /* Status bar */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 6px 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  .status-item { display: flex; align-items: center; gap: 5px; }
+  .status-dot { width: 5px; height: 5px; border-radius: 50%; }
+
+  /* Right Panel */
+  .output-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+
+  .tab {
+    padding: 12px 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    cursor: pointer;
+    color: var(--text-dim);
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .tab:hover { color: var(--text-mid); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab .count {
+    background: var(--surface3);
+    color: var(--text-mid);
+    border-radius: 10px;
+    padding: 1px 6px;
+    font-size: 10px;
+  }
+  .tab.active .count { background: rgba(0,212,255,0.15); color: var(--accent); }
+
+  /* Tab Content */
+  .tab-content { flex: 1; overflow: hidden; display: none; flex-direction: column; }
+  .tab-content.active { display: flex; }
+
+  /* Tokens View */
+  .tokens-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-content: flex-start;
+  }
+
+  .token-chip {
+    display: inline-flex;
+    flex-direction: column;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    border: 1px solid transparent;
+    opacity: 0;
+    transform: translateY(10px);
+    animation: tokenAppear 0.3s forwards;
+    cursor: default;
+    transition: transform 0.15s;
+  }
+  .token-chip:hover { transform: translateY(-2px) scale(1.02); }
+
+  @keyframes tokenAppear {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .token-type { font-size: 9px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.7; margin-bottom: 2px; }
+  .token-value { font-weight: 500; }
+
+  .chip-KEYWORD    { background: rgba(192,132,252,0.1); border-color: rgba(192,132,252,0.3); color: #c084fc; }
+  .chip-IDENTIFIER { background: rgba(226,232,240,0.05); border-color: rgba(226,232,240,0.15); color: #e2e8f0; }
+  .chip-INTEGER, .chip-FLOAT { background: rgba(251,146,60,0.1); border-color: rgba(251,146,60,0.3); color: #fb923c; }
+  .chip-STRING     { background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.3); color: #34d399; }
+  .chip-OPERATOR, .chip-PLUS, .chip-MINUS, .chip-MULTIPLY, .chip-DIVIDE,
+  .chip-MODULO, .chip-ASSIGN, .chip-OP_EQ, .chip-OP_NEQ, .chip-OP_LT,
+  .chip-OP_GT, .chip-OP_LTE, .chip-OP_GTE, .chip-OP_AND, .chip-OP_OR {
+    background: rgba(0,212,255,0.1); border-color: rgba(0,212,255,0.3); color: #00d4ff;
+  }
+  .chip-LPAREN, .chip-RPAREN, .chip-LBRACE, .chip-RBRACE,
+  .chip-SEMICOLON, .chip-COMMA, .chip-COLON {
+    background: rgba(100,116,139,0.1); border-color: rgba(100,116,139,0.3); color: #94a3b8;
+  }
+
+  /* AST View */
+  #ast-canvas-container {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+    position: relative;
+  }
+
+  #ast-svg {
+    width: 100%;
+    min-height: 100%;
+  }
+
+  .ast-node-group { cursor: pointer; }
+  .ast-node-rect {
+    rx: 8; ry: 8;
+    stroke-width: 1.5;
+    transition: all 0.2s;
+  }
+  .ast-node-group:hover .ast-node-rect { filter: brightness(1.3); }
+  .ast-node-text { font-family: 'JetBrains Mono', monospace; font-size: 11px; fill: white; }
+  .ast-node-type { font-size: 9px; fill: rgba(255,255,255,0.6); }
+  .ast-edge { stroke: rgba(255,255,255,0.1); stroke-width: 1.5; fill: none; }
+
+  /* Symbol Table */
+  .sym-table-wrapper { flex: 1; overflow-y: auto; padding: 16px; }
+
+  .sym-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .sym-table th {
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--surface2);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0;
+  }
+
+  .sym-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(31,48,80,0.5);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    opacity: 0;
+    animation: rowAppear 0.4s forwards;
+  }
+
+  @keyframes rowAppear {
+    from { opacity: 0; transform: translateX(-10px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .sym-table tr:hover td { background: rgba(0,212,255,0.03); }
+
+  .type-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .type-int    { background: rgba(96,165,250,0.15); color: #60a5fa; }
+  .type-float  { background: rgba(251,146,60,0.15); color: #fb923c; }
+  .type-string { background: rgba(52,211,153,0.15); color: #34d399; }
+  .type-bool   { background: rgba(192,132,252,0.15); color: #c084fc; }
+  .type-func   { background: rgba(0,212,255,0.15);  color: #00d4ff; }
+
+  .scope-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    background: var(--surface3);
+    color: var(--text-mid);
+  }
+
+  /* Code View (TAC + Python) */
+  .code-view {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    line-height: 20px;
+  }
+
+  .code-line {
+    display: flex;
+    gap: 16px;
+    padding: 2px 0;
+    opacity: 0;
+    animation: lineAppear 0.3s forwards;
+  }
+
+  @keyframes lineAppear {
+    to { opacity: 1; }
+  }
+
+  .code-line-num {
+    color: var(--text-dim);
+    user-select: none;
+    width: 28px;
+    text-align: right;
+    flex-shrink: 0;
+    font-size: 11px;
+  }
+
+  .code-line-content { color: var(--text); word-break: break-all; }
+  .code-line-content .kw { color: var(--keyword); }
+  .code-line-content .str { color: var(--string); }
+  .code-line-content .num { color: var(--number); }
+  .code-line-content .cmt { color: var(--comment); }
+  .code-line-content .label { color: var(--accent4); }
+  .code-line-content .temp { color: var(--accent); }
+
+  /* Errors Panel */
+  .errors-container { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+
+  .error-item, .warning-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    border: 1px solid;
+    animation: errorAppear 0.3s forwards;
+    opacity: 0;
+  }
+
+  @keyframes errorAppear {
+    to { opacity: 1; }
+  }
+
+  .error-item { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.25); }
+  .warning-item { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.25); }
+
+  .error-icon { font-size: 18px; flex-shrink: 0; }
+  .error-body { flex: 1; }
+  .error-msg { font-size: 13px; color: var(--text); margin-bottom: 4px; }
+  .error-meta { font-size: 11px; color: var(--text-dim); display: flex; gap: 12px; }
+  .error-phase {
+    padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;
+    background: rgba(239,68,68,0.15); color: var(--red);
+  }
+  .warning-phase {
+    padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;
+    background: rgba(245,158,11,0.15); color: var(--accent4);
+  }
+
+  /* Success Banner */
+  .success-banner {
+    margin: 16px;
+    padding: 14px 18px;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 10px;
+    color: var(--accent3);
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    display: none;
+  }
+
+  /* Empty state */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    gap: 12px;
+    font-size: 13px;
+  }
+
+  .empty-icon { font-size: 40px; opacity: 0.3; }
+
+  /* Loading */
+  .loading-overlay {
+    position: absolute; inset: 0;
+    background: rgba(10,14,26,0.8);
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px;
+    z-index: 200;
+    display: none;
+    backdrop-filter: blur(4px);
+  }
+
+  .loading-overlay.show { display: flex; }
+
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid rgba(0,212,255,0.15);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-text { color: var(--text-mid); font-size: 13px; letter-spacing: 0.5px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+  /* Dropdown */
+  .dropdown {
+    position: relative;
+  }
+
+  .dropdown-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px;
+    min-width: 200px;
+    z-index: 500;
+    display: none;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+  }
+
+  .dropdown-menu.show { display: block; }
+
+  .dropdown-item {
+    padding: 9px 12px;
+    border-radius: 7px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text-mid);
+    transition: all 0.15s;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .dropdown-item:hover { background: var(--surface3); color: var(--text); }
+
+  /* Grid decorations */
+  .bg-grid {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.02) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* Stats row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .stat-box {
+    background: var(--surface);
+    padding: 10px 16px;
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .stat-num {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    line-height: 1.3;
+  }
+
+  /* Notification toast */
+  .toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    padding: 12px 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 13px;
+    z-index: 1000;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: rgba(16,185,129,0.4); color: var(--accent3); }
+  .toast.error { border-color: rgba(239,68,68,0.4); color: var(--red); }
+
+  /* Examples selector */
+  .examples-btn { font-size: 16px; }
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">Compiling...</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Header -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    Compile<span>Viz</span>
+  </div>
+
+  <div class="header-center">
+    <div class="phase-badge lexer" id="badge-lexer">① Lexer</div>
+    <div style="color:var(--border)">→</div>
+    <div class="phase-badge parser" id="badge-parser">② Parser</div>
+    <div style="color:var(--border)">→</div>
+    <div class="phase-badge semantic" id="badge-semantic">③ Semantic</div>
+    <div style="color:var(--border)">→</div>
+    <div class="phase-badge codegen" id="badge-codegen">④ CodeGen</div>
+  </div>
+
+  <div class="header-actions">
+    <div class="dropdown">
+      <button class="btn btn-secondary examples-btn" onclick="toggleDropdown()">📂 Examples</button>
+      <div class="dropdown-menu" id="examples-dropdown">
+        <div class="dropdown-item" onclick="loadExample('fibonacci')">🌀 Fibonacci</div>
+        <div class="dropdown-item" onclick="loadExample('factorial')">📐 Factorial</div>
+        <div class="dropdown-item" onclick="loadExample('bubble_sort')">🔄 Bubble Sort</div>
+        <div class="dropdown-item" onclick="loadExample('calculator')">🧮 Calculator</div>
+        <div class="dropdown-item" onclick="loadExample('grade')">📊 Grade Checker</div>
+      </div>
+    </div>
+    <button class="btn btn-danger" onclick="clearEditor()">✕ Clear</button>
+    <button class="btn btn-primary" onclick="compile()" id="compile-btn">
+      <span>▶ Compile</span>
+    </button>
+  </div>
+</header>
+
+<!-- Stats Row -->
+<div class="stats-row">
+  <div class="stat-box">
+    <div>
+      <div class="stat-num" id="stat-tokens">0</div>
+      <div class="stat-label">Tokens</div>
+    </div>
+  </div>
+  <div class="stat-box">
+    <div>
+      <div class="stat-num" id="stat-nodes" style="color:var(--type)">0</div>
+      <div class="stat-label">AST Nodes</div>
+    </div>
+  </div>
+  <div class="stat-box">
+    <div>
+      <div class="stat-num" id="stat-symbols" style="color:var(--accent3)">0</div>
+      <div class="stat-label">Symbols</div>
+    </div>
+  </div>
+  <div class="stat-box">
+    <div>
+      <div class="stat-num" id="stat-errors" style="color:var(--red)">0</div>
+      <div class="stat-label">Errors</div>
+    </div>
+  </div>
+</div>
+
+<!-- Main Layout -->
+<main class="main">
+
+  <!-- Left: Editor -->
+  <div class="editor-panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <div class="dot"></div>
+        Source Code Editor
+      </div>
+      <div style="font-size:11px;color:var(--text-dim)">MiniLang</div>
+    </div>
+
+    <div class="editor-wrapper">
+      <div class="editor-bg"></div>
+      <div class="line-numbers" id="line-numbers">
+        <div class="line-num">1</div>
+      </div>
+      <textarea id="editor" spellcheck="false" placeholder="// Write your MiniLang code here...
+// Supports: int, float, string, bool types
+// Control flow: if/else, while, for
+// Functions: func name(type param) { }
+// I/O: print(value);
+
+// Click 'Examples' above to load sample code
+// Then hit ▶ Compile to see the magic!"></textarea>
+    </div>
+
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="status-dot" style="background:var(--accent3)" id="status-dot"></div>
+        <span id="status-text">Ready</span>
+      </div>
+      <div class="status-item" id="cursor-pos" style="margin-left:auto">Ln 1, Col 1</div>
+      <div class="status-item" id="char-count">0 chars</div>
+    </div>
+  </div>
+
+  <!-- Right: Output Panels -->
+  <div class="output-panel">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('tokens')" id="tab-tokens">
+        🔤 Tokens <span class="count" id="cnt-tokens">0</span>
+      </div>
+      <div class="tab" onclick="switchTab('ast')" id="tab-ast">
+        🌳 AST <span class="count" id="cnt-nodes">0</span>
+      </div>
+      <div class="tab" onclick="switchTab('symbols')" id="tab-symbols">
+        📋 Symbols <span class="count" id="cnt-symbols">0</span>
+      </div>
+      <div class="tab" onclick="switchTab('tac')" id="tab-tac">
+        ⚙️ 3-Address Code
+      </div>
+      <div class="tab" onclick="switchTab('python')" id="tab-python">
+        🐍 Python Output
+      </div>
+      <div class="tab" onclick="switchTab('errors')" id="tab-errors">
+        ⚠️ Errors <span class="count" id="cnt-errors">0</span>
+      </div>
+    </div>
+
+    <!-- Tokens Tab -->
+    <div class="tab-content active" id="content-tokens">
+      <div class="tokens-container" id="tokens-container">
+        <div class="empty-state">
+          <div class="empty-icon">🔤</div>
+          <div>Tokens will appear here after compilation</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AST Tab -->
+    <div class="tab-content" id="content-ast">
+      <div id="ast-canvas-container">
+        <div class="empty-state" id="ast-empty">
+          <div class="empty-icon">🌳</div>
+          <div>Abstract Syntax Tree will appear here</div>
+        </div>
+        <svg id="ast-svg" style="display:none"></svg>
+      </div>
+    </div>
+
+    <!-- Symbols Tab -->
+    <div class="tab-content" id="content-symbols">
+      <div class="sym-table-wrapper">
+        <div class="empty-state" id="sym-empty">
+          <div class="empty-icon">📋</div>
+          <div>Symbol table will appear here</div>
+        </div>
+        <table class="sym-table" id="sym-table" style="display:none">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Scope</th>
+              <th>Line</th>
+            </tr>
+          </thead>
+          <tbody id="sym-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAC Tab -->
+    <div class="tab-content" id="content-tac">
+      <div class="code-view" id="tac-view">
+        <div class="empty-state">
+          <div class="empty-icon">⚙️</div>
+          <div>Three-Address Code will appear here</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Python Tab -->
+    <div class="tab-content" id="content-python">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim)">Generated Python Code</div>
+        <button class="btn btn-secondary" style="padding:5px 12px;font-size:11px" onclick="copyPython()">Copy</button>
+      </div>
+      <div class="code-view" id="python-view">
+        <div class="empty-state">
+          <div class="empty-icon">🐍</div>
+          <div>Python output will appear here</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Errors Tab -->
+    <div class="tab-content" id="content-errors">
+      <div class="success-banner" id="success-banner">
+        ✅ Compilation successful! No errors found.
+      </div>
+      <div class="errors-container" id="errors-container">
+        <div class="empty-state">
+          <div class="empty-icon">✅</div>
+          <div>No errors yet. Compile your code!</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let examples = {};
+let lastResult = null;
+let pythonLines = [];
+
+// ─── Editor Setup ─────────────────────────────────────────────────────────────
+const editor = document.getElementById('editor');
+
+editor.addEventListener('input', updateLineNumbers);
+editor.addEventListener('scroll', syncScroll);
+editor.addEventListener('keydown', handleTab);
+editor.addEventListener('click', updateCursor);
+editor.addEventListener('keyup', updateCursor);
+
+function updateLineNumbers() {
+  const lines = editor.value.split('\n');
+  const nums = document.getElementById('line-numbers');
+  nums.innerHTML = lines.map((_, i) => `<div class="line-num">${i+1}</div>`).join('');
+  document.getElementById('char-count').textContent = editor.value.length + ' chars';
+}
+
+function syncScroll() {
+  document.getElementById('line-numbers').scrollTop = editor.scrollTop;
+}
+
+function handleTab(e) {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    editor.value = editor.value.substring(0, start) + '    ' + editor.value.substring(end);
+    editor.selectionStart = editor.selectionEnd = start + 4;
+    updateLineNumbers();
+  }
+}
+
+function updateCursor() {
+  const text = editor.value.substring(0, editor.selectionStart);
+  const lines = text.split('\n');
+  document.getElementById('cursor-pos').textContent = `Ln ${lines.length}, Col ${lines[lines.length-1].length + 1}`;
+}
+
+// ─── Load Examples ────────────────────────────────────────────────────────────
+async function fetchExamples() {
+  try {
+    const res = await fetch('/api/examples');
+    examples = await res.json();
+  } catch(e) {}
+}
+
+fetchExamples();
+
+function toggleDropdown() {
+  document.getElementById('examples-dropdown').classList.toggle('show');
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.dropdown')) {
+    document.getElementById('examples-dropdown').classList.remove('show');
+  }
+});
+
+function loadExample(name) {
+  if (examples[name]) {
+    editor.value = examples[name];
+    updateLineNumbers();
+    document.getElementById('examples-dropdown').classList.remove('show');
+    showToast('Example loaded: ' + name, 'success');
+  }
+}
+
+function clearEditor() {
+  editor.value = '';
+  updateLineNumbers();
+  resetOutput();
+}
+
+// ─── Compile ──────────────────────────────────────────────────────────────────
+async function compile() {
+  const source = editor.value.trim();
+  if (!source) { showToast('Please write some code first!', 'error'); return; }
+
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('status-dot').style.background = 'var(--accent4)';
+  document.getElementById('status-text').textContent = 'Compiling...';
+
+  // Animate phases
+  ['lexer','parser','semantic','codegen'].forEach((p,i) => {
+    setTimeout(() => document.getElementById('badge-'+p).classList.add('active'), i*200);
+  });
+
+  try {
+    const res = await fetch('/api/compile', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source})
+    });
+    const data = await res.json();
+    lastResult = data;
+    renderResult(data);
+  } catch(e) {
+    showToast('Server error: ' + e.message, 'error');
+  }
+
+  document.getElementById('loading').classList.remove('show');
+}
+
+// ─── Render Results ───────────────────────────────────────────────────────────
+function renderResult(data) {
+  // Stats
+  document.getElementById('stat-tokens').textContent  = data.tokens.length;
+  document.getElementById('stat-nodes').textContent   = countNodes(data.ast);
+  document.getElementById('stat-symbols').textContent = data.symbols.length;
+  document.getElementById('stat-errors').textContent  = data.errors.length;
+
+  document.getElementById('cnt-tokens').textContent  = data.tokens.length;
+  document.getElementById('cnt-nodes').textContent   = countNodes(data.ast);
+  document.getElementById('cnt-symbols').textContent = data.symbols.length;
+  document.getElementById('cnt-errors').textContent  = data.errors.length;
+
+  // Status
+  if (data.success) {
+    document.getElementById('status-dot').style.background = 'var(--accent3)';
+    document.getElementById('status-text').textContent = 'Compiled successfully';
+    showToast('✅ Compilation successful!', 'success');
+  } else {
+    document.getElementById('status-dot').style.background = 'var(--red)';
+    document.getElementById('status-text').textContent = `${data.errors.length} error(s)`;
+    showToast(`❌ ${data.errors.length} error(s) found`, 'error');
+  }
+
+  renderTokens(data.tokens);
+  renderAST(data.ast);
+  renderSymbols(data.symbols);
+  renderTAC(data.tac);
+  renderPython(data.python);
+  renderErrors(data.errors, data.warnings, data.success);
+
+  pythonLines = data.python;
+}
+
+function countNodes(node) {
+  if (!node) return 0;
+  let count = 1;
+  if (node.children) node.children.forEach(c => { if(typeof c === 'object') count += countNodes(c); });
+  return count;
+}
+
+// ── Tokens ──
+function renderTokens(tokens) {
+  const container = document.getElementById('tokens-container');
+  if (!tokens.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔤</div><div>No tokens found</div></div>'; return; }
+  container.innerHTML = tokens.map((t, i) => `
+    <div class="token-chip chip-${t.type}" style="animation-delay:${i * 30}ms" title="Line ${t.line}, Col ${t.column}">
+      <span class="token-type">${t.type}</span>
+      <span class="token-value">${escHtml(t.value)}</span>
+    </div>
+  `).join('');
+}
+
+// ── AST ──
+function renderAST(ast) {
+  const svg = document.getElementById('ast-svg');
+  const empty = document.getElementById('ast-empty');
+  if (!ast) { svg.style.display = 'none'; empty.style.display = 'flex'; return; }
+
+  empty.style.display = 'none';
+  svg.style.display = 'block';
+
+  const layout = layoutTree(ast);
+  const W = Math.max(layout.width * 140 + 60, 600);
+  const H = layout.depth * 90 + 60;
+
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('height', H);
+
+  const colors = {
+    'Program': ['#1e3a5f','#60a5fa'],
+    'Declaration': ['#1a3a2a','#34d399'],
+    'Assignment': ['#2a1f3a','#c084fc'],
+    'IfStatement': ['#3a2a10','#fb923c'],
+    'WhileLoop': ['#2a1020','#f472b6'],
+    'ForLoop': ['#1a2a3a','#38bdf8'],
+    'FunctionDef': ['#3a1a1a','#ef4444'],
+    'FunctionCall': ['#1a3a3a','#00d4ff'],
+    'BinaryOp': ['#2a2a1a','#facc15'],
+    'Print': ['#1a3a1a','#86efac'],
+    'Return': ['#2a1a2a','#e879f9'],
+    'default': ['#1a2235','#94a3b8']
+  };
+
+  let html = `<defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(255,255,255,0.15)"/>
+    </marker>
+  </defs>`;
+
+  // Draw edges first
+  layout.nodes.forEach(n => {
+    if (n.parent) {
+      const p = layout.nodes.find(x => x.id === n.parent);
+      if (p) {
+        html += `<path class="ast-edge" d="M${p.x},${p.y+22} C${p.x},${(p.y+n.y)/2+20} ${n.x},${(p.y+n.y)/2} ${n.x},${n.y-22}" marker-end="url(#arrow)"/>`;
+      }
+    }
+  });
+
+  // Draw nodes with animation
+  layout.nodes.forEach((n, i) => {
+    const [bg, stroke] = colors[n.node.node_type] || colors['default'];
+    const label = n.node.node_type;
+    const val = n.node.value ? escHtml(String(n.node.value).substring(0, 12)) : '';
+    const w = Math.max(label.length * 7.5 + 20, 80);
+    html += `
+      <g class="ast-node-group" style="opacity:0;animation:tokenAppear 0.4s ${i*40}ms forwards">
+        <rect class="ast-node-rect" x="${n.x - w/2}" y="${n.y - 22}" width="${w}" height="44"
+          fill="${bg}" stroke="${stroke}" rx="8" filter="url(#glow)"/>
+        <text class="ast-node-text" x="${n.x}" y="${n.y - 5}" text-anchor="middle">${label}</text>
+        ${val ? `<text class="ast-node-type" x="${n.x}" y="${n.y + 10}" text-anchor="middle">${val}</text>` : ''}
+      </g>`;
+  });
+
+  svg.innerHTML = html;
+}
+
+function layoutTree(root) {
+  let nodeId = 0;
+  const nodes = [];
+
+  function measure(node, depth) {
+    if (!node || typeof node !== 'object' || !node.node_type) return { width: 1, depth: 1 };
+    const id = nodeId++;
+    const kids = (node.children || []).filter(c => c && typeof c === 'object' && c.node_type);
+    if (!kids.length) { nodes.push({id, node, depth, width:1, parentId:null}); return {width:1, depth:depth+1}; }
+    let totalW = 0, maxD = 0;
+    kids.forEach(k => { const r = measure(k, depth+1); totalW += r.width; maxD = Math.max(maxD, r.depth); });
+    nodes.push({id, node, depth, width:totalW, parentId:null});
+    return {width:totalW, depth:maxD};
+  }
+
+  const {width, depth} = measure(root, 0);
+
+  // Assign x positions
+  const depthCounters = {};
+  nodes.sort((a,b)=>a.depth-b.depth || a.id-b.id);
+
+  // Simple layered layout
+  const byDepth = {};
+  nodes.forEach(n => { (byDepth[n.depth] = byDepth[n.depth]||[]).push(n); });
+
+  Object.entries(byDepth).forEach(([d, ns]) => {
+    const total = ns.length;
+    ns.forEach((n, i) => {
+      n.x = (i+1) * (width * 140 + 60) / (total + 1);
+      n.y = parseInt(d) * 90 + 45;
+    });
+  });
+
+  // Link parents (simple: find closest parent by depth)
+  nodes.forEach(n => {
+    if (n.depth > 0) {
+      const parents = nodes.filter(p => p.depth === n.depth - 1);
+      if (parents.length) {
+        const closest = parents.reduce((a,b) => Math.abs(a.x-n.x) < Math.abs(b.x-n.x) ? a : b);
+        n.parent = closest.id;
+      }
+    }
+  });
+
+  return { nodes, width, depth };
+}
+
+// ── Symbol Table ──
+function renderSymbols(symbols) {
+  const empty = document.getElementById('sym-empty');
+  const table = document.getElementById('sym-table');
+  const tbody = document.getElementById('sym-tbody');
+
+  if (!symbols.length) {
+    empty.style.display = 'flex'; table.style.display = 'none'; return;
+  }
+
+  empty.style.display = 'none';
+  table.style.display = 'table';
+
+  tbody.innerHTML = symbols.map((s, i) => `
+    <tr style="animation-delay:${i*60}ms">
+      <td style="color:var(--text-dim)">${i+1}</td>
+      <td><strong>${escHtml(s.name)}</strong></td>
+      <td><span class="type-badge type-${s.type}">${s.type}</span></td>
+      <td><span class="scope-badge">${s.scope_name}</span></td>
+      <td style="color:var(--text-dim)">${s.line || '-'}</td>
+    </tr>
+  `).join('');
+}
+
+// ── TAC ──
+function renderTAC(lines) {
+  const view = document.getElementById('tac-view');
+  if (!lines || !lines.length) {
+    view.innerHTML = '<div class="empty-state"><div class="empty-icon">⚙️</div><div>No code generated</div></div>';
+    return;
+  }
+  view.innerHTML = lines.map((line, i) => {
+    const content = highlightTAC(line);
+    return `<div class="code-line" style="animation-delay:${i*20}ms">
+      <span class="code-line-num">${i+1}</span>
+      <span class="code-line-content">${content}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Python ──
+function renderPython(lines) {
+  const view = document.getElementById('python-view');
+  if (!lines || !lines.length) {
+    view.innerHTML = '<div class="empty-state"><div class="empty-icon">🐍</div><div>No output generated</div></div>';
+    return;
+  }
+  view.innerHTML = lines.map((line, i) => {
+    const content = highlightPython(line);
+    return `<div class="code-line" style="animation-delay:${i*20}ms">
+      <span class="code-line-num">${i+1}</span>
+      <span class="code-line-content">${content}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Errors ──
+function renderErrors(errors, warnings, success) {
+  const container = document.getElementById('errors-container');
+  const banner = document.getElementById('success-banner');
+
+  if (success && !errors.length && !warnings.length) {
+    banner.style.display = 'flex';
+    container.innerHTML = '';
+    return;
+  }
+
+  banner.style.display = 'none';
+  let html = '';
+
+  errors.forEach((e, i) => {
+    html += `<div class="error-item" style="animation-delay:${i*80}ms">
+      <div class="error-icon">❌</div>
+      <div class="error-body">
+        <div class="error-msg">${escHtml(e.message)}</div>
+        <div class="error-meta">
+          <span class="error-phase">${e.phase || 'Error'}</span>
+          ${e.line ? `<span>Line ${e.line}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+  });
+
+  warnings.forEach((w, i) => {
+    html += `<div class="warning-item" style="animation-delay:${(errors.length+i)*80}ms">
+      <div class="error-icon">⚠️</div>
+      <div class="error-body">
+        <div class="error-msg">${escHtml(w.message)}</div>
+        <div class="error-meta">
+          <span class="warning-phase">Warning</span>
+          ${w.line ? `<span>Line ${w.line}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+  });
+
+  container.innerHTML = html || '<div class="empty-state"><div class="empty-icon">✅</div><div>No issues found</div></div>';
+
+  if (errors.length > 0) switchTab('errors');
+}
+
+// ─── Syntax Highlighting ──────────────────────────────────────────────────────
+function highlightPython(line) {
+  const s = escHtml(line);
+  return s
+    .replace(/\b(def|if|else|elif|while|for|return|print|True|False|None|in|and|or|not|pass)\b/g, '<span class="kw">$1</span>')
+    .replace(/(#.*)/g, '<span class="cmt">$1</span>')
+    .replace(/(".*?")/g, '<span class="str">$1</span>')
+    .replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+}
+
+function highlightTAC(line) {
+  const s = escHtml(line);
+  if (s.startsWith('#')) return `<span class="cmt">${s}</span>`;
+  return s
+    .replace(/\b(if|goto|call|func|end|return|print|not)\b/g, '<span class="kw">$1</span>')
+    .replace(/\b(L\d+:?)\b/g, '<span class="label">$1</span>')
+    .replace(/\b(t\d+)\b/g, '<span class="temp">$1</span>')
+    .replace(/(".*?")/g, '<span class="str">$1</span>')
+    .replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('content-'+name).classList.add('active');
+}
+
+function resetOutput() {
+  ['stat-tokens','stat-nodes','stat-symbols','stat-errors'].forEach(id => document.getElementById(id).textContent = '0');
+  ['cnt-tokens','cnt-nodes','cnt-symbols','cnt-errors'].forEach(id => document.getElementById(id).textContent = '0');
+  document.getElementById('tokens-container').innerHTML = '<div class="empty-state"><div class="empty-icon">🔤</div><div>Tokens will appear here after compilation</div></div>';
+  document.getElementById('ast-svg').style.display = 'none';
+  document.getElementById('ast-empty').style.display = 'flex';
+  document.getElementById('sym-empty').style.display = 'flex';
+  document.getElementById('sym-table').style.display = 'none';
+  document.getElementById('tac-view').innerHTML = '<div class="empty-state"><div class="empty-icon">⚙️</div><div>Three-Address Code will appear here</div></div>';
+  document.getElementById('python-view').innerHTML = '<div class="empty-state"><div class="empty-icon">🐍</div><div>Python output will appear here</div></div>';
+  document.getElementById('success-banner').style.display = 'none';
+  document.getElementById('errors-container').innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div>No errors yet</div></div>';
+  ['lexer','parser','semantic','codegen'].forEach(p => document.getElementById('badge-'+p).classList.remove('active'));
+  document.getElementById('status-dot').style.background = 'var(--accent3)';
+  document.getElementById('status-text').textContent = 'Ready';
+}
+
+let toastTimer;
+function showToast(msg, type='success') {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = 'toast ' + type + ' show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function copyPython() {
+  if (pythonLines.length) {
+    navigator.clipboard.writeText(pythonLines.join('\n'));
+    showToast('Python code copied!', 'success');
+  }
+}
+
+// Keyboard shortcut: Ctrl+Enter to compile
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); compile(); }
+});
+
+// Init
+updateLineNumbers();
+</script>
+</body>
+</html>
